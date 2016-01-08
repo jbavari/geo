@@ -6,6 +6,7 @@ defmodule Geo.JSON do
   alias Geo.MultiLineString
   alias Geo.MultiPolygon
   alias Geo.GeometryCollection
+  alias Geo.Feature
 
   @moduledoc """
   Converts Geo structs to and from a map representing GeoJSON.
@@ -34,19 +35,24 @@ defmodule Geo.JSON do
   @doc """
   Takes a map representing GeoJSON and returns a Geometry
   """
+
   @spec decode(Map.t) :: Geo.geometry
   def decode(geo_json) do
     crs = Dict.get(geo_json, "crs")
     case Dict.has_key?(geo_json, "geometries") do
       true ->
-        geometries = Enum.map(Dict.get(geo_json, "geometries"), 
-          fn(x) -> 
+        geometries = Enum.map(Dict.get(geo_json, "geometries"),
+          fn(x) ->
             do_decode(Dict.get(x, "type"), Dict.get(x, "coordinates"), crs)
           end)
 
         %GeometryCollection{ geometries: geometries }
       false ->
-        do_decode(Dict.get(geo_json, "type"), Dict.get(geo_json, "coordinates"), crs)
+        if Dict.get(geo_json, "type") == "Feature" do
+          do_decode("Feature", geo_json, crs)
+        else
+          do_decode(Dict.get(geo_json, "type"), Dict.get(geo_json, "coordinates"), crs)
+        end
     end
   end
 
@@ -61,7 +67,7 @@ defmodule Geo.JSON do
   end
 
   defp do_decode("Polygon", coordinates, crs) do
-    coordinates = Enum.map(coordinates, fn(sub_coordinates) -> 
+    coordinates = Enum.map(coordinates, fn(sub_coordinates) ->
       Enum.map(sub_coordinates, &List.to_tuple(&1))
     end)
 
@@ -75,7 +81,7 @@ defmodule Geo.JSON do
   end
 
   defp do_decode("MultiLineString", coordinates, crs) do
-    coordinates = Enum.map(coordinates, fn(sub_coordinates) -> 
+    coordinates = Enum.map(coordinates, fn(sub_coordinates) ->
       Enum.map(sub_coordinates, &List.to_tuple(&1))
     end)
 
@@ -83,13 +89,21 @@ defmodule Geo.JSON do
   end
 
   defp do_decode("MultiPolygon", coordinates, crs) do
-    coordinates = Enum.map(coordinates, fn(sub_coordinates) -> 
-      Enum.map(sub_coordinates, fn(third_sub_coordinates) -> 
+    coordinates = Enum.map(coordinates, fn(sub_coordinates) ->
+      Enum.map(sub_coordinates, fn(third_sub_coordinates) ->
         Enum.map(third_sub_coordinates, &List.to_tuple(&1))
       end)
     end)
 
     %MultiPolygon{ coordinates: coordinates, srid: get_srid(crs) }
+  end
+
+  defp do_decode("Feature", geo_json, crs) do
+    geom = Dict.get(geo_json, "geometry")
+    coords = Dict.get(geom, "coordinates")
+    type = Dict.get(geom, "type")
+    geom_obj = do_decode(type, coords, crs)
+    %Feature{ type: "Feature", properties: %{}, geometry: geom_obj}
   end
 
   defp get_srid(%{"type" => "name", "properties" => %{ "name" => "EPSG" <> srid } }) do
@@ -113,11 +127,13 @@ defmodule Geo.JSON do
   def encode(geom) do
     case geom do
       %GeometryCollection{ geometries: geometries, srid: srid } ->
-        %{ "type" => "GeometryCollection",  "geometries" => Enum.map(geometries, &do_encode(&1))} 
+        %{ "type" => "GeometryCollection",  "geometries" => Enum.map(geometries, &do_encode(&1))}
         |> add_crs(srid)
+      %Feature{} ->
+        do_encode(geom)
       _ ->
-        do_encode(geom) 
-        |> add_crs(geom.srid)              
+        do_encode(geom)
+        |> add_crs(geom.srid)
     end
   end
 
@@ -132,7 +148,7 @@ defmodule Geo.JSON do
   end
 
   defp do_encode(%Polygon{ coordinates: coordinates }) do
-    coordinates = Enum.map(coordinates, fn(sub_coordinates) -> 
+    coordinates = Enum.map(coordinates, fn(sub_coordinates) ->
       Enum.map(sub_coordinates, &Tuple.to_list(&1))
     end)
 
@@ -146,7 +162,7 @@ defmodule Geo.JSON do
   end
 
   defp do_encode(%MultiLineString{ coordinates: coordinates }) do
-    coordinates = Enum.map(coordinates, fn(sub_coordinates) -> 
+    coordinates = Enum.map(coordinates, fn(sub_coordinates) ->
       Enum.map(sub_coordinates, &Tuple.to_list(&1))
     end)
 
@@ -154,13 +170,18 @@ defmodule Geo.JSON do
   end
 
   defp do_encode(%MultiPolygon{ coordinates: coordinates }) do
-    coordinates = Enum.map(coordinates, fn(sub_coordinates) -> 
-      Enum.map(sub_coordinates, fn(third_sub_coordinates) -> 
+    coordinates = Enum.map(coordinates, fn(sub_coordinates) ->
+      Enum.map(sub_coordinates, fn(third_sub_coordinates) ->
         Enum.map(third_sub_coordinates, &Tuple.to_list(&1))
       end)
     end)
 
     %{ "type" => "MultiPolygon", "coordinates" => coordinates }
+  end
+
+  defp do_encode(%Feature{type: "Feature", properties: properties, geometry: geometry}) do
+    geometry = do_encode(geometry)
+    %{ "type" => "Feature", "geometry" => geometry, "properties" => properties }
   end
 
   defp add_crs(map, nil) do

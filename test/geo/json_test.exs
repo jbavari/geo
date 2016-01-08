@@ -53,6 +53,36 @@ defmodule Geo.JSON.Test do
     assert(exjson == new_exjson)
   end
 
+  test "GeoJson to Feature(Polygon) and Back" do
+    json = ~s({"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[129.75,-87.1875],[129.5625,-100.8125],[139.625,-100.9375],[140.3125,-87.0625],[139.875,-82.1875],[131.0625,-82.5625],[129.75,-87.1875]]]}})
+    exjson = Poison.decode!(json)
+    geom = Poison.decode!(json) |> Geo.JSON.decode
+
+    assert(geom.geometry.coordinates == [[ {129.75,-87.1875}, {129.5625,-100.8125},{139.625,-100.9375},{140.3125,-87.0625},{139.875,-82.1875},{131.0625,-82.5625},{129.75,-87.1875}]])
+    new_exjson = Geo.JSON.encode(geom)
+    assert(exjson == new_exjson)
+  end
+
+  test "GeoJson to Feature(Point) and Back" do
+    json = ~s({"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[129.75,-87.1875]}})
+    exjson = Poison.decode!(json)
+    geom = Poison.decode!(json) |> Geo.JSON.decode
+
+    assert(geom.geometry.coordinates == {129.75,-87.1875})
+    new_exjson = Geo.JSON.encode(geom)
+    assert(exjson == new_exjson)
+  end
+
+  test "GeoJson to Feature(LineString) and Back" do
+    json = ~s({"type":"Feature","properties":{},"geometry":{"type":"LineString","coordinates":[[129.75,-87.1875], [129.75,-87.1875]]}})
+    exjson = Poison.decode!(json)
+    geom = Poison.decode!(json) |> Geo.JSON.decode
+
+    assert(geom.geometry.coordinates == [{129.75,-87.1875}, {129.75,-87.1875}])
+    new_exjson = Geo.JSON.encode(geom)
+    assert(exjson == new_exjson)
+  end
+
   test "GeoJson to MultiPoint and back" do
     json = "{ \"type\": \"MultiPoint\", \"coordinates\": [ [100.0, 0.0], [101.0, 1.0] ]}"
     exjson = Poison.decode!(json)
